@@ -53,13 +53,30 @@ rank_change <- latest_rpi %>%
   select(TeamName, LatestRank = Rank, RPI = RPI) %>%
   left_join(second_latest_rpi %>% select(TeamName, PreviousRank = Rank), by = "TeamName") %>%
   mutate(RankChange = PreviousRank - LatestRank) %>%
-  right_join(rpi_rankings %>% select(TeamName, Country = Country, Division = Division, LowestRPI = LowestRPI, HighestRPI = HighestRPI), by = "TeamName")
+  left_join(rpi_results %>% select(TeamName, Country = Country, Division = Division), by = "TeamName")
 
 ranks <- unique(rank_change)
 
 ######## Calculate Chances for Different Races #########
 stotesbury <- ranks %>%
-  filter(Country == "USA", Division == "Scholastic")
+  filter(Country == "USA", Division == "Scholastic", !(TeamName %in% c("New Trier",
+                                                                        "Belen Jesuit",
+                                                                        "Loyola Academy",
+                                                                        "Deerfield",
+                                                                        "Central Catholic",
+                                                                        "Pinecrest",
+                                                                        "Lake Brantley",
+                                                                        "St. Ignatius (OH)",
+                                                                        "Mel High",
+                                                                        "Berkeley",
+                                                                        "Great Bay",
+                                                                        "Ransom Everglades",
+                                                                        "Westford Academy",
+                                                                        "Shrewsbury (MA)",
+                                                                        "Arlington Belmont",
+                                                                        "Boston Latin",
+                                                                        "Bolles",
+                                                                        "McCallie")))
 
 youths <- ranks %>%
   filter(Country == "USA")
@@ -67,8 +84,7 @@ youths <- ranks %>%
 schools <- ranks %>%
   filter(Country == "GB")
 
-henley <- ranks %>%
-  filter(Division == "Scholastic")
+henley <- ranks
 
 # Now you can run the overall simulation using the updated functions
 Stotesbury <- simulate_stotesbury(stotesbury, 100000)[,c("TeamName", "Champion_Prob")]
@@ -83,7 +99,7 @@ ranks <- left_join(ranks, Henley, by = "TeamName")
 
 ranks[is.na(ranks)] <- 0
 
-colnames(ranks)[10:13] <- c("Stotesbury", "Youths", "Schools", "Henley")
+colnames(ranks)[8:11] <- c("Stotesbury", "Youths", "Schools", "Henley")
 
 ##### Generate Table #####
 championship_cols <- c("Stotesbury", "Youths", "Schools", "Henley")
@@ -125,7 +141,7 @@ tbl <- reactable(
       header = "Crew",
       defaultSortOrder = "asc",
       headerStyle = list(fontWeight = 700),
-      maxWidth = 375,
+      minWidth = 375,
       cell = function(value, index) {
         country_code <- forecasts$Country[index]
         img_src <- knitr::image_uri(sprintf("images/%s.png", country_code))
@@ -145,8 +161,8 @@ tbl <- reactable(
     RPI = colDef(
       header = "RPI",
       headerStyle = list(fontWeight = 700),
-      align = "center",
-      maxWidth = 75,
+      align = "left",
+      minWidth = 75,
       class = "cell group",
       cell = function(value) { format(round(value), nsmall = 0) }
     ),
@@ -154,7 +170,7 @@ tbl <- reactable(
       header = "Category",
       headerStyle = list(fontWeight = 700),
       align = "left",
-      maxWidth = 175,
+      minWidth = 175,
       class = "cell group"),
     Country = colDef(show = FALSE),
     RankChange = colDef(show = FALSE),
@@ -316,7 +332,7 @@ html_content <- tagList(
     div(
       class = "standings",
       update_timestamp, # This line inserts the timestamp
-      tags$div(class = "title", h1("Global Boys Varsity 8+ Power Rankings"), align = "center"),
+      tags$div(class = "title", h1("Global Boys Varsity 8+ Rankings"), align = "center"),
       subheading <- div(class = "subtitle",
                         p("How 98 international rowing teams compare by Rowing Power Index, updated after each regatta.", align = "center")
       ),

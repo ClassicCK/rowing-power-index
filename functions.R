@@ -31,7 +31,7 @@ mov_multiplier <- function(margin_of_victory, elo_winner, elo_loser) {
 # Placeholder for race impact scaling function
 # Returns a multiplier based on the race's impact level
 adjust_impact <- function(impact_level) {
-  if(impact_level == "Championship") return(1.2)
+  if(impact_level %in% c("Championship", "Head Race")) return(1.2)
   if(impact_level %in% c("Final", "Semi-Final")) return(1.0)
   if(impact_level %in% c("Regatta", "Heat", "Time Trial")) return(0.9)
 }
@@ -61,9 +61,9 @@ calculate_time_diffs <- function(race_results) {
 adjust_k_for_race_type <- function(race_type) {
   if (race_type %in% c("Time Trial")) {
     return(10)  # Higher sensitivity for earlier stages
-  } else if (race_type == "Semi-Final") {
+  } else if (race_type %in% c("Semi-Final")) {
     return(24)  # Less sensitivity for final stages to not penalize as much
-  } else if (race_type %in% c("Final", "Championship")) {
+  } else if (race_type %in% c("Head Race", "Final", "Championship")) {
     return(20)  # Less sensitivity for final stages to not penalize as much
   } else {
     return(16)  # Default sensitivity
@@ -107,20 +107,19 @@ RPI <- function(db) {
       # Assuming time_diff represents the team's time difference from the best performance
       median_time_diff <- median(current_race_results$time_diff)
       
-      is_final <- any(current_race_results$Type == "Championship")
+      is_final <- any(current_race_results$Type %in% c("Head Race", "Championship"))
       
       for (i in 1:nrow(current_race_results)) {
         team_i <- current_race_results$TeamName[i]
         teams <- current_race_results$TeamName[-i]
         elo_i <- elo_adjustments[team_i]
+        elo_racers <- elo_adjustments[teams]
         
         # Calculate the performance score relative to the median
         performance_score_i <- ifelse(current_race_results$time_diff[i] <= median_time_diff, 0, 1)
         
         # Assuming a simplified calculation for expected performance
         expected_i <- 1 / (1 + 10 ^ ((mean(elo_racers) - elo_i) / 400))
-        
-        elo_racers <- elo_adjustments[teams]
         
         # Implementing MoV adjustments and autocorrelation corrections as discussed
         MoV_Multiplier <- mov_multiplier(current_race_results$time_diff[i], elo_i, mean(elo_racers))
@@ -146,22 +145,33 @@ RPI <- function(db) {
         impact_adjustment_i <- adjust_impact(current_race_results$Type[i])
         distance_adjustment_i <- adjust_for_distance(current_race_results$Distance[i])
         
-        # Adjust Elo change using MoV Multiplier
+        # Calculate elo_change_i
         elo_change_i <- k * MoV_Multiplier * (performance_score_i - expected_i) * condition_adjustment_i * distance_adjustment_i * league_adjustment_i * impact_adjustment_i
+        
+        # Replace elo_change_i with a default value if it is numeric(0)
+        default_elo_change <- 1  # Set your default value here
+        elo_change_i <- ifelse(length(elo_change_i) == 0, default_elo_change, elo_change_i)
+        
+        # Now, check if elo_change_i is infinite and set it to the default value if it is
+        elo_change_i <- ifelse(!is.finite(elo_change_i), default_elo_change, elo_change_i)
+        
         
         # Now, check if the team won a final and apply the boost
         if (is_final && current_race_results$FinishPosition[i] == 1) {
           elo_change_i <- elo_change_i + 40*current_race_results$time_diff[1]/current_race_results$time_diff[2]
+          elo_change_i <- ifelse(!is.finite(elo_change_i), default_elo_change + 80, elo_change_i)
         }
         
         # Now, check if the team won a final and apply the boost
         if (is_final && current_race_results$FinishPosition[i] == 2) {
           elo_change_i <- elo_change_i + 15*current_race_results$time_diff[2]/current_race_results$time_diff[3]
+          elo_change_i <- ifelse(!is.finite(elo_change_i), default_elo_change + 80, elo_change_i)
         }
         
         # Now, check if the team won a final and apply the boost
         if (is_final && current_race_results$FinishPosition[i] == 3) {
           elo_change_i <- elo_change_i + 7.5*current_race_results$time_diff[3]/current_race_results$time_diff[4]
+          elo_change_i <- ifelse(!is.finite(elo_change_i), default_elo_change + 7.5, elo_change_i)
         }
         
         elo_adjustments[team_i] <- elo_i + elo_change_i
