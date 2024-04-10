@@ -179,3 +179,167 @@ RPI <- function(db) {
   dbWriteTable(db, "TeamRPI", elo_updates, row.names=FALSE, overwrite=TRUE)
 }
 
+elo_column <- function(maxWidth = 55, ...) {
+  colDef(maxWidth = maxWidth, align = "center", class = "cell number", ...)
+}
+
+champion_column <- function(maxWidth = 175, class = NULL, ...) {
+  colDef(
+    cell = format_pct,
+    maxWidth = maxWidth,
+    class = paste("cell number", class),
+    style = function(value) {
+      # Lighter color for <1%
+      if (value < 0.01) {
+        list(color = "#aaa")
+      } else {
+        list(color = "#111", background = knockout_pct_color(value))
+      }
+    },
+    ...
+  )
+}
+
+format_pct <- function(value) {
+  if (value == 0) "  \u2013 "    # en dash for 0%
+  #else if (value == 1) "\u2713"  # checkmark for 100%
+  else if (value < 0.01) " <1%"
+  else if (value > 0.99) ">99%"
+  else formatC(paste0(round(value * 100), "%"), width = 4)
+}
+
+make_color_pal <- function(colors, bias = 1) {
+  get_color <- colorRamp(colors, bias = bias)
+  function(x) rgb(get_color(x), maxColorValue = 255)
+}
+
+simulate_stotesbury <- function(teams_info, n_simulations = 10000) {
+  n_teams <- nrow(teams_info)
+  
+  # Initialize matrices to track advancement
+  semifinals_matrix <- matrix(0, nrow = n_teams, ncol = n_simulations)
+  finals_matrix <- matrix(0, nrow = n_teams, ncol = n_simulations)
+  champion_matrix <- matrix(0, nrow = n_teams, ncol = n_simulations)
+  
+  for (sim in 1:n_simulations) {
+    # Simulate variability in performance using RPI
+    simulated_rpis <- teams_info$RPI + rnorm(n_teams, mean = 0, sd = 36)
+    
+    # Determine advancement based on simulated RPI
+    # Top 18 teams advance to semifinals
+    semifinalists <- order(simulated_rpis, decreasing = TRUE)[1:18]
+    semifinals_matrix[semifinalists, sim] <- 1
+    
+    # Top 6 teams advance to finals
+    finalists <- semifinalists[order(simulated_rpis[semifinalists], decreasing = TRUE)[1:6]]
+    finals_matrix[finalists, sim] <- 1
+    
+    # Winner of the final
+    champion <- finalists[which.max(simulated_rpis[finalists])]
+    champion_matrix[champion, sim] <- 1
+  }
+  
+  # Calculate probabilities
+  teams_info$Semifinals_Prob <- rowMeans(semifinals_matrix)
+  teams_info$Finals_Prob <- rowMeans(finals_matrix)
+  teams_info$Champion_Prob <- rowMeans(champion_matrix)
+  
+  return(teams_info)
+}
+
+simulate_youths <- function(teams_info, n_simulations = 10000) {
+  n_teams <- nrow(teams_info)
+  
+  # Initialize matrices to track advancement
+  semifinals_matrix <- matrix(0, nrow = n_teams, ncol = n_simulations)
+  finals_matrix <- matrix(0, nrow = n_teams, ncol = n_simulations)
+  champion_matrix <- matrix(0, nrow = n_teams, ncol = n_simulations)
+  
+  for (sim in 1:n_simulations) {
+    simulated_rpis <- teams_info$RPI + rnorm(n_teams, mean = 0, sd = 36)
+    
+    # Top 16 teams advance to two semifinals, top 8 from those advance to final
+    semifinalists <- order(simulated_rpis, decreasing = TRUE)[1:16]
+    semifinals_matrix[semifinalists, sim] <- 1
+    
+    finalists <- semifinalists[order(simulated_rpis[semifinalists], decreasing = TRUE)[1:8]]
+    finals_matrix[finalists, sim] <- 1
+    
+    champion <- finalists[which.max(simulated_rpis[finalists])]
+    champion_matrix[champion, sim] <- 1
+  }
+  
+  teams_info$Semifinals_Prob <- rowMeans(semifinals_matrix)
+  teams_info$Finals_Prob <- rowMeans(finals_matrix)
+  teams_info$Champion_Prob <- rowMeans(champion_matrix)
+  
+  return(teams_info)
+}
+
+simulate_schools <- function(teams_info, n_simulations = 10000) {
+  n_teams <- nrow(teams_info)
+  
+  # Initialize matrices to track advancement
+  first_round_matrix <- matrix(0, nrow = n_teams, ncol = n_simulations)
+  semifinals_matrix <- matrix(0, nrow = n_teams, ncol = n_simulations)
+  finals_matrix <- matrix(0, nrow = n_teams, ncol = n_simulations)
+  
+  for (sim in 1:n_simulations) {
+    simulated_rpis <- teams_info$RPI + rnorm(n_teams, mean = 0, sd = 36)
+    
+    # Top 8 advance straight to the semifinal
+    direct_semifinalists <- order(simulated_rpis, decreasing = TRUE)[1:8]
+    semifinals_matrix[direct_semifinalists, sim] <- 1
+    
+    # The remainder compete again, top 8 of that remainder also advance to semifinal
+    remainder_semifinalists <- order(simulated_rpis, decreasing = TRUE)[9:n_teams]
+    remainder_semifinalists <- remainder_semifinalists[1:8]
+    semifinals_matrix[remainder_semifinalists, sim] <- 1
+    
+    # Top 8 of the 16 in the semifinal advance to the final
+    semifinalists <- c(direct_semifinalists, remainder_semifinalists)
+    finalists <- semifinalists[order(simulated_rpis[semifinalists], decreasing = TRUE)[1:8]]
+    finals_matrix[finalists, sim] <- 1
+    
+    # Winner of the final
+    champion <- finalists[which.max(simulated_rpis[finalists])]
+    champion_matrix[champion, sim] <- 1
+  }
+  
+  # Example adjustment assuming 'teams_info' is already defined correctly but needs matching probabilities
+  teams_info$Semifinals_Prob <- rowMeans(semifinals_matrix[1:nrow(teams_info), ])
+  teams_info$Finals_Prob <- rowMeans(finals_matrix[1:nrow(teams_info), ])
+  teams_info$Champion_Prob <- rowMeans(champion_matrix[1:nrow(teams_info), ])
+  
+  return(teams_info)
+}
+
+simulate_henley <- function(teams_info, n_simulations = 10000) {
+  n_teams <- nrow(teams_info)
+  champion_matrix <- matrix(0, nrow = n_teams, ncol = n_simulations)
+  
+  for (sim in 1:n_simulations) {
+    simulated_rpis <- teams_info$RPI + rnorm(n_teams, mean = 0, sd = 36)
+    
+    # Seed the teams
+    seeded_teams <- order(simulated_rpis, decreasing = TRUE)[1:32]
+    
+    # Simulate head-to-head matchups
+    for (round in 1:5) { # 5 rounds: 32 -> 16 -> 8 -> 4 -> 2 -> 1
+      winners <- numeric()
+      for (i in seq(1, length(seeded_teams), by = 2)) {
+        match_up <- seeded_teams[i:(i+1)]
+        winner <- match_up[which.max(simulated_rpis[match_up])]
+        winners <- c(winners, winner)
+      }
+      seeded_teams <- winners
+    }
+    
+    champion_matrix[seeded_teams, sim] <- 1
+  }
+  
+  teams_info$Champion_Prob <- rowMeans(champion_matrix)
+  
+  return(teams_info)
+}
+
