@@ -86,8 +86,20 @@ RPI <- function(db) {
   race_results$NormalizedTime <- mapply(normalize_time, race_results$FinishTime, race_results$Distance)
   
   # Initialize Elo ratings
-  unique_team_names <- unique(race_results$TeamName)
-  elo_adjustments <- setNames(rep(1500, length(unique_team_names)), unique_team_names)
+  # Separate unique team names for British and non-British teams
+  unique_team_names_gb <- unique(race_results$TeamName[race_results$Country == "GB"])
+  unique_team_names_others <- unique(race_results$TeamName[race_results$Country != "GB"])
+  
+  # Initialize Elo ratings
+  elo_adjustments_gb <- rep(1550, length(unique_team_names_gb))
+  elo_adjustments_others <- rep(1500, length(unique_team_names_others))
+  
+  # Assign names to the Elo adjustments
+  names(elo_adjustments_gb) <- unique_team_names_gb
+  names(elo_adjustments_others) <- unique_team_names_others
+  
+  # Bind the Elo adjustments together
+  elo_adjustments <- c(elo_adjustments_gb, elo_adjustments_others)
   
   # Prepare a DataFrame to store Elo rating updates
   elo_updates <- data.frame(TeamName=character(), RPIDate=as.Date(character()), RPI=double(), stringsAsFactors=FALSE)
@@ -159,19 +171,19 @@ RPI <- function(db) {
         # Now, check if the team won a final and apply the boost
         if (is_final && current_race_results$FinishPosition[i] == 1) {
           elo_change_i <- elo_change_i + 40*current_race_results$time_diff[1]/current_race_results$time_diff[2]
-          elo_change_i <- ifelse(!is.finite(elo_change_i), default_elo_change + 80, elo_change_i)
+          elo_change_i <- ifelse(!is.finite(elo_change_i), default_elo_change, elo_change_i)
         }
         
         # Now, check if the team won a final and apply the boost
         if (is_final && current_race_results$FinishPosition[i] == 2) {
           elo_change_i <- elo_change_i + 15*current_race_results$time_diff[2]/current_race_results$time_diff[3]
-          elo_change_i <- ifelse(!is.finite(elo_change_i), default_elo_change + 80, elo_change_i)
+          elo_change_i <- ifelse(!is.finite(elo_change_i), default_elo_change, elo_change_i)
         }
         
         # Now, check if the team won a final and apply the boost
         if (is_final && current_race_results$FinishPosition[i] == 3) {
           elo_change_i <- elo_change_i + 7.5*current_race_results$time_diff[3]/current_race_results$time_diff[4]
-          elo_change_i <- ifelse(!is.finite(elo_change_i), default_elo_change + 7.5, elo_change_i)
+          elo_change_i <- ifelse(!is.finite(elo_change_i), default_elo_change, elo_change_i)
         }
         
         elo_adjustments[team_i] <- elo_i + elo_change_i
