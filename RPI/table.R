@@ -4,6 +4,12 @@ library(showtext)
 library(webshot)
 library(dplyr)
 
+# Assuming db is your database connection
+db <- dbConnect(SQLite(), dbname = "rpi.db")
+
+# Run the Elo rating update process
+RPI(db)
+
 rpi_results_query <- "
 SELECT 
   Teams.TeamName, Teams.League, Teams.Division, Teams.Country, 
