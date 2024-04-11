@@ -28,8 +28,8 @@ rpi_dates <- rpi_results %>%
   ungroup()
 
 # Step 2: Determine the most recent date overall
-latest_date <- max(rpi_dates$RPIDate) # can also manually set
-second_date <- unique(rpi_dates$RPIDate)[2] # can also manually set
+latest_date <- "2024-04-07" #max(rpi_dates$RPIDate) # can also manually set
+second_date <- "2024-03-30" #unique(rpi_dates$RPIDate)[2] # can also manually set
 
 # Step 3: Separate the data into two datasets for the most recent and second most recent competitions
 latest_rpi <- rpi_dates %>%
@@ -340,7 +340,7 @@ html_content <- tagList(
       update_timestamp, # This line inserts the timestamp
       tags$div(class = "title", h1("Global Boys Varsity 8+ Rankings"), align = "center"),
       subheading <- div(class = "subtitle",
-                        p("How 98 international rowing teams compare by Rowing Power Index, updated after each regatta.", align = "center")
+                        p("How 197 international rowing teams compare by Rowing Power Index, updated after each regatta.", align = "center")
       ),
       tbl, # Your table goes here
       subheading_text, # Insert the subheading text here
@@ -351,7 +351,4 @@ html_content <- tagList(
 
 
 # Save the HTML content to a file
-html_file <- tempfile(fileext = ".html")
 save_html(html_content, file = "index.html")
-webshot(html_file, "RPI_Table.png", zoom = 2, expand = TRUE, delay = 1) # you can also export to pdf
-

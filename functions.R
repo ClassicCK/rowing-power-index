@@ -32,8 +32,8 @@ mov_multiplier <- function(margin_of_victory, elo_winner, elo_loser) {
 # Returns a multiplier based on the race's impact level
 adjust_impact <- function(impact_level) {
   if(impact_level %in% c("Championship", "Head Race")) return(1.2)
-  if(impact_level %in% c("Final", "Semi-Final")) return(1.0)
-  if(impact_level %in% c("Regatta", "Heat", "Time Trial")) return(0.9)
+  if(impact_level %in% c("Final", "Semi-Final", "H2H")) return(1.0)
+  if(impact_level %in% c("Regatta", "Heat", "Time Trial", "Scrimmage")) return(0.9)
 }
 
 # Normalize race times to a standard distance (e.g., 2000 meters)
@@ -61,7 +61,7 @@ calculate_time_diffs <- function(race_results) {
 adjust_k_for_race_type <- function(race_type) {
   if (race_type %in% c("Time Trial")) {
     return(10)  # Higher sensitivity for earlier stages
-  } else if (race_type %in% c("Semi-Final")) {
+  } else if (race_type %in% c("Semi-Final", "H2H")) {
     return(24)  # Less sensitivity for final stages to not penalize as much
   } else if (race_type %in% c("Head Race", "Final", "Championship")) {
     return(20)  # Less sensitivity for final stages to not penalize as much
@@ -83,7 +83,9 @@ RPI <- function(db) {
       JOIN Teams ON Results.TeamName = Teams.TeamName
       ORDER BY Races.RaceDate, Races.RaceID, Results.FinishPosition;"
   race_results <- dbGetQuery(db, race_results_query)
-  race_results$NormalizedTime <- mapply(normalize_time, race_results$FinishTime, race_results$Distance)
+  race_results <- calculate_performance_scores(race_results)
+  
+  #race_results$NormalizedTime <- mapply(normalize_time, race_results$FinishTime, race_results$Distance)
   
   # Initialize Elo ratings
   # Separate unique team names for British and non-British teams
@@ -113,11 +115,11 @@ RPI <- function(db) {
       current_race_results <- race_results[race_results$RaceID == race_id,]
       current_race_results <- calculate_time_diffs(current_race_results)
       
+      # Assuming time_diff represents the team's time difference from the best performance
+      #median_time_diff <- median(current_race_results$time_diff[i])
+      
       # Adjust k based on race type
       k <- adjust_k_for_race_type(current_race_results$Type[1])
-      
-      # Assuming time_diff represents the team's time difference from the best performance
-      median_time_diff <- median(current_race_results$time_diff)
       
       is_final <- any(current_race_results$Type %in% c("Head Race", "Championship"))
       
@@ -128,13 +130,18 @@ RPI <- function(db) {
         elo_racers <- elo_adjustments[teams]
         
         # Calculate the performance score relative to the median
-        performance_score_i <- ifelse(current_race_results$time_diff[i] <= median_time_diff, 0, 1)
+        #performance_score_i <- ifelse(current_race_results$time_diff[i] <= median_time_diff, 0, 1)
+        performance_score_i <- current_race_results$PerformanceScore[i]
         
         # Assuming a simplified calculation for expected performance
         expected_i <- 1 / (1 + 10 ^ ((mean(elo_racers) - elo_i) / 400))
         
         # Implementing MoV adjustments and autocorrelation corrections as discussed
-        MoV_Multiplier <- mov_multiplier(current_race_results$time_diff[i], elo_i, mean(elo_racers))
+        MoV_Multiplier <- mov_multiplier(current_race_results$time_diff[i], elo_i, median(elo_racers))
+        
+        if(MoV_Multiplier == 0){
+          MoV_Multiplier <- 1
+        }
         
         # Calculate the rating difference between the current team and the average of other teams in the race
         rating_diff <- elo_i - mean(elo_racers)
@@ -245,7 +252,7 @@ simulate_stotesbury <- function(teams_info, n_simulations = 10000) {
   
   for (sim in 1:n_simulations) {
     # Simulate variability in performance using RPI
-    simulated_rpis <- teams_info$RPI + rnorm(n_teams, mean = 0, sd = 36)
+    simulated_rpis <- teams_info$RPI + rnorm(n_teams, mean = 0, sd = 50)
     
     # Determine advancement based on simulated RPI
     # Top 18 teams advance to semifinals
@@ -364,4 +371,20 @@ simulate_henley <- function(teams_info, n_simulations = 10000) {
   
   return(teams_info)
 }
+
+calculate_performance_scores <- function(race_results) {
+  race_results$NormalizedTime <- mapply(normalize_time, race_results$FinishTime, race_results$Distance)
+  
+  race_results <- race_results %>%
+    group_by(RaceID) %>%
+    mutate(
+      BestTime = min(NormalizedTime),
+      TimeDiff = NormalizedTime - BestTime,
+      # Score inversely related to time difference; closer to BestTime yields higher score
+      PerformanceScore = 1 / (1 + TimeDiff / median(TimeDiff))
+    ) %>%
+    ungroup()
+  return(race_results)
+}
+
 
